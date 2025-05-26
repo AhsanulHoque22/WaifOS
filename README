@@ -1,0 +1,257 @@
+📱 WaifOS — ESP32 Multitasking UI System
+
+WaifOS is a lightweight multitasking operating system for ESP32 using the Arduino framework and FreeRTOS. It features an app menu, multitasking, display rendering, input handling, and WiFi capabilities.
+
+
+################################################
+🛠️ Installation (PlatformIO)
+
+Clone or Download
+
+```bash
+git clone https://github.com/yourname/waifos.git
+cd waifos
+
+Or use the ZIP provided.
+
+Open in VSCode with PlatformIO
+
+    File → Open Folder → Select the WaifOS/ folder
+
+    PlatformIO will automatically detect the environment.
+
+Build & Upload
+
+    Plug in your ESP32
+
+    Click PlatformIO: Upload
+
+    Or run:
+        ```bash
+        pio run --target upload
+
+
+################################################
+🔧 Hardware Setup
+Component	Description
+Board	ESP32 DevKit v1 (WROOM-32)
+Display	SH1106 128x64 OLED (I2C)
+Buttons	6x jumper-based inputs
+WiFi	2.4 GHz via onboard radio
+
+
+################################################
+📌 Pin Configuration
+🖥 OLED (SH1106 I2C)
+Function	GPIO
+SDA	        21
+SCL	        22
+
+
+################################################
+🎮 Buttons
+Function	GPIO	Usage in code
+UP	        32	    BUTTON_UP
+DOWN	    33	    BUTTON_DOWN
+LEFT	    25	    BUTTON_LEFT
+RIGHT	    26	    BUTTON_RIGHT
+ENTER	    27	    BUTTON_ENTER
+EXIT	    14	    BUTTON_EXIT
+
+Buttons are active LOW (use INPUT_PULLUP)
+
+
+################################################
+📂 upload_fs.py — Upload Files to LittleFS
+
+If your project uses LittleFS for storing configuration files, app data, etc., you need a way to upload those files to the ESP32’s flash memory.
+
+PlatformIO doesn’t upload the data/ folder by default unless explicitly configured. This is where upload_fs.py comes in.
+📄 File: upload_fs.py
+
+# upload_fs.py
+Import("env")
+env.Replace(FS="LittleFS", FSTYPE="littlefs")
+
+💡 What this does:
+
+    Tells PlatformIO to use LittleFS (instead of default SPIFFS)
+
+    Sets the correct filesystem type and flags
+
+    Ensures pio run --target uploadfs uploads files to flash in the spiffs partition
+
+
+################################################
+✅ Features
+
+    Dual-core FreeRTOS task management
+
+    App menu with smooth navigation
+
+    Clock (via NTP)
+
+    Modular app system (Snake, Calculator, Task Manager, etc.)
+
+    WiFi connect and scan
+
+    Display synchronization using SemaphoreHandle_t mutex
+
+
+################################################
+🚧 Common Errors & Fixes
+❌ Guru Meditation Error (LoadProhibited)
+
+Cause:
+Calling vTaskDelete() on a null or already-deleted task.
+
+Fix:
+
+if (appTaskHandle != NULL) {
+  eTaskState state = eTaskGetState(appTaskHandle);
+  if (state != eDeleted && state != eInvalid) {
+    vTaskDelete(appTaskHandle);
+  }
+  appTaskHandle = NULL;
+}
+
+
+
+❌ ESP32 hangs on app launch
+
+Cause:
+
+    Task created but crashes silently due to:
+
+        Stack overflow
+
+        Display driver used without mutex
+
+        Blocking code or missing vTaskDelay
+
+Fixes:
+
+    Increase app task stack size to 16384
+
+    Add vTaskDelay() in every while(true) loop
+
+    Use display only inside xSemaphoreTake(displayMutex) blocks
+
+    Confirm display.init() is called early in ui_init()
+
+
+
+❌ Crash on second app launch
+
+Cause:
+Task handle not invalidated, or trying to delete an already-deleted task.
+
+Fix:
+
+appTaskHandle = NULL;
+vTaskDelete(NULL);  // inside app_task_wrapper
+
+
+
+❌ NTP time not working
+
+Fix:
+
+configTime(21600, 0, "pool.ntp.org"); // Bangladesh = UTC+6
+
+Call this after WiFi is connected.
+
+
+❌ WiFiClientSecure fails to build
+
+Fix:
+Remove ESP-IDF-specific headers. Use Arduino's built-in WiFi + HTTPClient instead. Do not mix esp-idf and Arduino-style code unless you're experienced.
+
+
+❌ No output on OLED
+
+Fixes:
+
+    Check pin numbers: SDA = 21, SCL = 22
+
+    Confirm display.init() is called
+
+    Use INPUT_PULLUP and check jumper connections with multimeter
+
+    Insert debug print before and after display.drawString() to verify flow
+
+
+🧪 Debugging Tips
+
+    Use Serial.println() at each step (button press, task creation, app entry)
+
+    Use PlatformIO’s monitor_filters = esp32_exception_decoder
+
+    Run xtensa-esp32-elf-addr2line on crash addresses to find line number
+
+    Use ESP.getFreeHeap() to debug memory issues
+
+    Isolate display crashes by commenting out display.* lines
+
+
+
+################################################
+🛠 Build Notes
+
+copy and paste the following in platformio.ini file:
+platformio.ini:
+
+[env:esp32dev]
+platform = espressif32
+board = esp32dev
+framework = arduino
+monitor_speed = 115200
+upload_speed = 115200
+extra_scripts = upload_fs.py
+board_build.partitions = partitions.csv
+board_build.filesystem = spiffs
+upload_port = /dev/ttyACM0
+monitor_port = /dev/ttyACM0
+lib_deps = 
+	bblanchon/ArduinoJson@^7.4.1
+	t-vk/ESP32 BLE Keyboard@^0.3.2
+	ESP32 BLE Keyboard
+	paulstoffregen/Time@^1.6.1
+    Time
+	;arduino-libraries/WiFi @ ^1.2.7
+	me-no-dev/AsyncTCP @ ^1.1.1
+	knolleary/PubSubClient @ ^2.8
+build_flags =
+  -DCORE_DEBUG_LEVEL=5
+  -DARDUHAL_ASSERT_ABORT=1
+  -DDEBUG_ESP_PORT=Serial~
+
+
+################################################
+🧠 Known Quirks
+
+    SH1106 display must be accessed from one core at a time — use a mutex. The library that is used here is the best known library for this display.
+
+    If using WiFiClientSecure, ensure no conflicting ESP-IDF headers.
+
+    Task stack overflows do not always throw errors — use conservative sizes.
+
+
+################################################
+📚 Future Work
+
+    Async app queue system to prevent UI blocking
+
+    App memory profiler / watchdog integration
+
+    Use LittleFS or SPIFFS for persistent settings
+
+    Remote OTA via WiFi
+
+
+################################################
+👤 Author
+
+Ahsanul Hoque
+🛠 Built with VSCode + PlatformIO on Ubuntu
+🌐 Created with ❤️ for microcontroller experimentation
